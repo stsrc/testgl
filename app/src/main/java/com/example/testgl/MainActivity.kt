@@ -1,19 +1,24 @@
 package com.example.testgl
 
 import android.app.Activity
-import android.opengl.GLSurfaceView
-import android.os.Bundle
 import android.content.Context
-import javax.microedition.khronos.egl.EGLConfig
-import javax.microedition.khronos.opengles.GL10
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.opengl.GLES20
+import android.opengl.GLSurfaceView
+import android.opengl.GLUtils
 import android.opengl.Matrix
+import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.opengles.GL10
 
-class MyGLRenderer : GLSurfaceView.Renderer {
+
+class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
     private lateinit var mTriangle: Triangle
 
     // vPMatrix is an abbreviation for "Model View Projection Matrix"
@@ -22,12 +27,15 @@ class MyGLRenderer : GLSurfaceView.Renderer {
     private val viewMatrix = FloatArray(16)
     private val rotationMatrix = FloatArray(16)
 
+    private var mActivityContext: Context = context
+
     override fun onSurfaceCreated(unused: GL10, config: EGLConfig) {
         // initialize a triangle
         mTriangle = Triangle()
 
+        mTriangle.loadTexture(mActivityContext, R.drawable.texture)
         // Set the background frame color
-        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
+        GLES20.glClearColor(0.0f, 1.0f, 0.0f, 1.0f)
     }
 
     override fun onDrawFrame(unused: GL10) {
@@ -77,7 +85,7 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context) {
         // Create an OpenGL ES 2.0 context
         setEGLContextClientVersion(2)
 
-        renderer = MyGLRenderer()
+        renderer = MyGLRenderer(context)
 
         // Set the Renderer for drawing on the GLSurfaceView
         setRenderer(renderer)
@@ -97,21 +105,16 @@ class MainActivity : Activity() {
     }
 }
 
-// number of coordinates per vertex in this array
-const val COORDS_PER_VERTEX = 3
-var triangleCoords = floatArrayOf(     // in counterclockwise order:
-    0.0f, 0.622008459f, 0.0f,      // top
-    -0.5f, -0.311004243f, 0.0f,    // bottom left
-    0.5f, -0.311004243f, 0.0f      // bottom right
-)
-
 class Triangle {
     private val vertexShaderCode =
     // This matrix member variable provides a hook to manipulate
         // the coordinates of the objects that use this vertex shader
         "uniform mat4 uMVPMatrix;" +
                 "attribute vec4 vPosition;" +
+                "attribute vec2 TexCoordinate;" +
+                "varying vec2 v_TexCoordinate;" +
                 "void main() {" +
+                "  v_TexCoordinate = TexCoordinate;" +
                 // the matrix must be included as a modifier of gl_Position
                 // Note that the uMVPMatrix factor *must be first* in order
                 // for the matrix multiplication product to be correct.
@@ -124,30 +127,13 @@ class Triangle {
 
     private val fragmentShaderCode =
         "precision mediump float;" +
-                "uniform vec4 vColor;" +
+                "uniform sampler2D u_Texture;" +
+                "varying vec2 v_TexCoordinate;" +
                 "void main() {" +
-                "  gl_FragColor = vColor;" +
+                "  gl_FragColor = texture2D(u_Texture, v_TexCoordinate);" +
                 "}"
 
 
-
-    // Set color with red, green, blue and alpha (opacity) values
-    val color = floatArrayOf(0.63671875f, 0.76953125f, 0.22265625f, 1.0f)
-
-    private var vertexBuffer: FloatBuffer =
-        // (number of coordinate values * 4 bytes per float)
-        ByteBuffer.allocateDirect(triangleCoords.size * 4).run {
-            // use the device hardware's native byte order
-            order(ByteOrder.nativeOrder())
-
-            // create a floating point buffer from the ByteBuffer
-            asFloatBuffer().apply {
-                // add the coordinates to the FloatBuffer
-                put(triangleCoords)
-                // set the buffer to read the first coordinate
-                position(0)
-            }
-        }
 
     private fun loadShader(type: Int, shaderCode: String): Int {
 
@@ -160,6 +146,35 @@ class Triangle {
             GLES20.glCompileShader(shader)
         }
     }
+
+    private var mTextureDataHandle : Int = 0
+
+    fun loadTexture(context: Context, resourceId: Int): Int {
+        val textureHandle = IntArray(1)
+
+        GLES20.glGenTextures(1, textureHandle, 0)
+        if (textureHandle[0] != 0) {
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[0])
+
+            val options = BitmapFactory.Options()
+            options.inScaled = false
+            val bitmap: Bitmap = BitmapFactory.decodeResource(context.getResources(), resourceId, options)
+
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
+
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+
+            bitmap.recycle()
+
+            mTextureDataHandle = textureHandle[0]
+
+            return textureHandle[0]
+        } else {
+            throw RuntimeException("Error loading texture.")
+        }
+    }
+
     private var mProgram: Int
 
   init {
@@ -182,17 +197,39 @@ class Triangle {
     }
 
     private var positionHandle: Int = 0
-    private var mColorHandle: Int = 0
+
+    // number of coordinates per vertex in this array
+    private val COORDS_PER_VERTEX = 3
+    private var triangleCoords = floatArrayOf(     // in counterclockwise order:
+        0.0f, 0.0f, 0.0f,      // top
+        0.0f, 1.0f, 0.0f,    // bottom left
+        1.0f, 0.0f, 0.0f      // bottom right
+    )
 
     private val vertexCount: Int = triangleCoords.size / COORDS_PER_VERTEX
     private val vertexStride: Int = COORDS_PER_VERTEX * 4 // 4 bytes per vertex
+
+    private var vertexBuffer: FloatBuffer =
+        // (number of coordinate values * 4 bytes per float)
+        ByteBuffer.allocateDirect(triangleCoords.size * 4).run {
+            // use the device hardware's native byte order
+            order(ByteOrder.nativeOrder())
+
+            // create a floating point buffer from the ByteBuffer
+            asFloatBuffer().apply {
+                // add the coordinates to the FloatBuffer
+                put(triangleCoords)
+                // set the buffer to read the first coordinate
+                position(0)
+            }
+        }
 
     fun draw(mvpMatrix: FloatArray) {
         GLES20.glUseProgram(mProgram)
 
         // get handle to vertex shader's vPosition member
         positionHandle = GLES20.glGetAttribLocation(mProgram, "vPosition").also {
-
+            Log.d("->", "it = $it")
             // Enable a handle to the triangle vertices
             GLES20.glEnableVertexAttribArray(it)
 
@@ -205,15 +242,7 @@ class Triangle {
                 vertexStride,
                 vertexBuffer
             )
-
-            // get handle to fragment shader's vColor member
-            mColorHandle = GLES20.glGetUniformLocation(mProgram, "vColor").also { colorHandle ->
-
-                // Set color for drawing the triangle
-                GLES20.glUniform4fv(colorHandle, 1, color, 0)
-            }
         }
-
 
         // get handle to shape's transformation matrix
         vPMatrixHandle = GLES20.glGetUniformLocation(mProgram, "uMVPMatrix")
@@ -223,6 +252,46 @@ class Triangle {
 
         // Draw the triangle
         GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount)
+
+        val textureUniformHandle: Int = GLES20.glGetUniformLocation(mProgram, "u_Texture")
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mTextureDataHandle)
+        GLES20.glUniform1i(textureUniformHandle, 0)
+
+        val textureCoordinateDataSize: Int = 2
+
+        val textureCoordinateData = floatArrayOf(
+            // Front face
+            0.0f, 0.0f,
+            0.0f, 1.0f,
+            1.0f, 0.0f,
+            1.0f, 1.0f
+        )
+
+        val textureCoordinates: FloatBuffer =
+            ByteBuffer.allocateDirect(textureCoordinateData.size * 4).run {
+                order(ByteOrder.nativeOrder())
+
+                asFloatBuffer().apply {
+                    put(textureCoordinateData)
+                    position(0)
+                }
+            }
+
+
+        val textureCoordinateHandle = GLES20.glGetAttribLocation(mProgram, "TexCoordinate").also {
+
+            GLES20.glEnableVertexAttribArray(it)
+            GLES20.glVertexAttribPointer(
+               it,
+                2,
+                GLES20.GL_FLOAT,
+                false,
+                8,
+                textureCoordinates
+            )
+        }
 
         // Disable vertex array
         GLES20.glDisableVertexAttribArray(positionHandle)
