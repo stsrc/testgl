@@ -25,7 +25,7 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
     private var mTriangles: Vector<Triangle> = Vector(1)
 
     // vPMatrix is an abbreviation for "Model View Projection Matrix"
-    private val vPMatrix = FloatArray(16)
+    private val modelMatrix = FloatArray(16)
     private val projectionMatrix = FloatArray(16)
     private val viewMatrix = FloatArray(16)
     private val rotationMatrix = FloatArray(16)
@@ -52,17 +52,15 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
         Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 5f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
 
         // Calculate the projection and view transformation
-        Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
+        //Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
 
         val scratch = FloatArray(16)
         // Create a rotation transformation for the triangle
         val time = SystemClock.uptimeMillis() % 4000L
-        Matrix.setRotateM(rotationMatrix, 0, 0.090f * time.toInt(), 1.0f, 0f, 0.0f)
+     //   Matrix.setIdentityM(modelMatrix, 0)
+        Matrix.setRotateM(modelMatrix, 0, 0.090f * time.toInt(), 1.0f, 0f, 0.0f)
 
-        // Calculate the projection and view transformation
-        Matrix.multiplyMM(scratch, 0, vPMatrix, 0, rotationMatrix, 0)
-
-        mTriangles[0].draw(scratch)
+        mTriangles[0].draw(modelMatrix, viewMatrix, projectionMatrix)
     }
 
     override fun onSurfaceChanged(unused: GL10, width: Int, height: Int) {
@@ -139,7 +137,9 @@ class Triangle {
     private val vertexShaderCode =
     // This matrix member variable provides a hook to manipulate
         // the coordinates of the objects that use this vertex shader
-        "uniform mat4 uMVPMatrix;" +
+        "uniform mat4 Model;" +
+                "uniform mat4 View;" +
+                "uniform mat4 Projection;" +
                 "attribute vec4 vPosition;" +
                 "attribute vec2 TexCoordinate;" +
                 "varying vec2 v_TexCoordinate;" +
@@ -148,7 +148,7 @@ class Triangle {
                 // the matrix must be included as a modifier of gl_Position
                 // Note that the uMVPMatrix factor *must be first* in order
                 // for the matrix multiplication product to be correct.
-                "  gl_Position = uMVPMatrix * vPosition;" +
+                "  gl_Position = Projection * View * Model * vPosition;" +
                 "}"
 
     // Use to access and set the view transformation
@@ -261,7 +261,7 @@ class Triangle {
             }
         }
 
-    fun draw(mvpMatrix: FloatArray) {
+    fun draw(model: FloatArray, view: FloatArray, projection: FloatArray) {
         GLES20.glUseProgram(mProgram)
 
         // get handle to vertex shader's vPosition member
@@ -281,10 +281,14 @@ class Triangle {
         }
 
         // get handle to shape's transformation matrix
-        vPMatrixHandle = GLES20.glGetUniformLocation(mProgram, "uMVPMatrix")
+        val modelHandle = GLES20.glGetUniformLocation(mProgram, "Model")
+        val viewHandle = GLES20.glGetUniformLocation(mProgram, "View")
+        val projectionHandle = GLES20.glGetUniformLocation(mProgram, "Projection")
 
         // Pass the projection and view transformation to the shader
-        GLES20.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
+        GLES20.glUniformMatrix4fv(modelHandle, 1, false, model, 0)
+        GLES20.glUniformMatrix4fv(viewHandle, 1, false, view, 0)
+        GLES20.glUniformMatrix4fv(projectionHandle, 1, false, projection, 0)
 
         // Draw the triangle
         GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount)
