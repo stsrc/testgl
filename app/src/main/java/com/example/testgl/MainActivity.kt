@@ -11,6 +11,7 @@ import android.opengl.Matrix
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
+import android.view.MotionEvent
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -19,6 +20,8 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
+    @Volatile
+    public var angle: Float = 0f
     private var mTriangles: Vector<Triangle> = Vector(1)
 
     // vPMatrix is an abbreviation for "Model View Projection Matrix"
@@ -48,15 +51,13 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
         // Set the camera position (View matrix)
         Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 5f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
 
+        // Calculate the projection and view transformation
+        Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
 
-                // Calculate the projection and view transformation
-                Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
-
-                val scratch = FloatArray(16)
-                // Create a rotation transformation for the triangle
-                val time = SystemClock.uptimeMillis() % 4000L
-                val angle = 0.090f * time.toInt()
-                Matrix.setRotateM(rotationMatrix, 0, angle, 1.0f, 0f, 0.0f)
+        val scratch = FloatArray(16)
+        // Create a rotation transformation for the triangle
+        val time = SystemClock.uptimeMillis() % 4000L
+        Matrix.setRotateM(rotationMatrix, 0, 0.090f * time.toInt(), 1.0f, 0f, 0.0f)
 
         // Calculate the projection and view transformation
         Matrix.multiplyMM(scratch, 0, vPMatrix, 0, rotationMatrix, 0)
@@ -76,20 +77,49 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
     }
 }
 
+private const val TOUCH_SCALE_FACTOR: Float = 180.0f / 320f
 class MyGLSurfaceView(context: Context) : GLSurfaceView(context) {
+
+    private var previousX: Float = 0f
+    private var previousY: Float = 0f
 
     private val renderer: MyGLRenderer
 
     init {
-
         // Create an OpenGL ES 2.0 context
         setEGLContextClientVersion(2)
 
         renderer = MyGLRenderer(context)
-
         // Set the Renderer for drawing on the GLSurfaceView
         setRenderer(renderer)
+
+        //renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
     }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        // MotionEvent reports input details from the touch screen
+        // and other input controls. In this case, you are only
+        // interested in events where the touch position changed.
+
+        val x: Float = e.x
+        val y: Float = e.y
+
+        when (e.action) {
+            MotionEvent.ACTION_MOVE -> {
+
+                var dx: Float = x - previousX
+                var dy: Float = y - previousY
+
+                renderer.angle += (dx + dy) * TOUCH_SCALE_FACTOR
+                //requestRender()
+            }
+        }
+
+        previousX = x
+        previousY = y
+        return true
+    }
+
 }
 
 class MainActivity : Activity() {
