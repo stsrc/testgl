@@ -14,12 +14,12 @@ import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.util.*
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
-
 class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
-    private lateinit var mTriangle: Triangle
+    private var mTriangles: Vector<Triangle> = Vector(1)
 
     // vPMatrix is an abbreviation for "Model View Projection Matrix"
     private val vPMatrix = FloatArray(16)
@@ -30,13 +30,15 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
     private var mActivityContext: Context = context
 
     override fun onSurfaceCreated(unused: GL10, config: EGLConfig) {
-        // initialize a triangle
-        mTriangle = Triangle()
+        // initialize a triangles
+        mTriangles.add(Triangle())
 
-        mTriangle.loadTexture(mActivityContext, R.drawable.texture)
+        mTriangles[0].loadTexture(mActivityContext, R.drawable.texture, R.drawable.brick)
         // Set the background frame color
-        GLES20.glClearColor(0.0f, 1.0f, 0.0f, 1.0f)
+        GLES20.glClearColor(1.0f, 0.0f, 0.0f, 1.0f)
     }
+
+    private val constIncrement = 0.02f
 
     override fun onDrawFrame(unused: GL10) {
         // Redraw background color
@@ -45,21 +47,20 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
         // Set the camera position (View matrix)
         Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 5f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
 
+
+                // Calculate the projection and view transformation
+                Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
+
+                val scratch = FloatArray(16)
+                // Create a rotation transformation for the triangle
+                val time = SystemClock.uptimeMillis() % 4000L
+                val angle = 0.090f * time.toInt()
+                Matrix.setRotateM(rotationMatrix, 0, angle, 1.0f, 0f, 0.0f)
+
         // Calculate the projection and view transformation
-        Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
-
-        val scratch = FloatArray(16)
-        // Create a rotation transformation for the triangle
-        val time = SystemClock.uptimeMillis() % 4000L
-        val angle = 0.090f * time.toInt()
-        Matrix.setRotateM(rotationMatrix, 0, angle, 1.0f, 0f, 0.0f)
-
-        // Combine the rotation matrix with the projection and camera view
-        // Note that the vPMatrix factor *must be first* in order
-        // for the matrix multiplication product to be correct.
         Matrix.multiplyMM(scratch, 0, vPMatrix, 0, rotationMatrix, 0)
 
-        mTriangle.draw(scratch)
+        mTriangles[0].draw(scratch)
     }
 
     override fun onSurfaceChanged(unused: GL10, width: Int, height: Int) {
@@ -72,8 +73,6 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
         Matrix.frustumM(projectionMatrix, 0, -ratio, ratio, -1f, 1f, 3f, 7f)
 
     }
-
-
 }
 
 class MyGLSurfaceView(context: Context) : GLSurfaceView(context) {
@@ -128,9 +127,14 @@ class Triangle {
     private val fragmentShaderCode =
         "precision mediump float;" +
                 "uniform sampler2D u_Texture;" +
+                "uniform sampler2D back_Texture;" +
                 "varying vec2 v_TexCoordinate;" +
                 "void main() {" +
-                "  gl_FragColor = texture2D(u_Texture, v_TexCoordinate);" +
+                "  if (gl_FrontFacing) {" +
+                "    gl_FragColor = texture2D(u_Texture, v_TexCoordinate);" +
+                "  } else {" +
+                "    gl_FragColor = texture2D(back_Texture, v_TexCoordinate);" +
+                "  }" +
                 "}"
 
 
@@ -147,18 +151,21 @@ class Triangle {
         }
     }
 
-    private var mTextureDataHandle : Int = 0
+    private var mTextureDataHandle = Vector<Int>()
 
-    fun loadTexture(context: Context, resourceId: Int): Int {
-        val textureHandle = IntArray(1)
+    fun loadTexture(context: Context, resourceId: Int, resourceId2: Int): Vector<Int> {
+        val textureHandle = IntArray(2)
 
-        GLES20.glGenTextures(1, textureHandle, 0)
+        GLES20.glGenTextures(2, textureHandle, 0)
         if (textureHandle[0] != 0) {
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[0])
 
             val options = BitmapFactory.Options()
             options.inScaled = false
-            val bitmap: Bitmap = BitmapFactory.decodeResource(context.getResources(), resourceId, options)
+            var bitmap: Bitmap = BitmapFactory.decodeResource(context.getResources(), resourceId, options)
+            var matrix: android.graphics.Matrix = android.graphics.Matrix()
+            matrix.postRotate(180.0f)
+            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, false)
 
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
@@ -167,12 +174,33 @@ class Triangle {
 
             bitmap.recycle()
 
-            mTextureDataHandle = textureHandle[0]
-
-            return textureHandle[0]
+            mTextureDataHandle.add(textureHandle[0])
         } else {
             throw RuntimeException("Error loading texture.")
         }
+
+        if (textureHandle[1] != 0) {
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[1])
+
+            val options = BitmapFactory.Options()
+            options.inScaled = false
+            var bitmap: Bitmap = BitmapFactory.decodeResource(context.getResources(), resourceId2, options)
+            var matrix: android.graphics.Matrix = android.graphics.Matrix()
+            matrix.postRotate(180.0f)
+            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, false)
+
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
+
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+
+            bitmap.recycle()
+
+            mTextureDataHandle.add(textureHandle[1])
+        } else {
+            throw RuntimeException("Error loading texture.")
+        }
+        return mTextureDataHandle
     }
 
     private var mProgram: Int
@@ -201,9 +229,9 @@ class Triangle {
     // number of coordinates per vertex in this array
     private val COORDS_PER_VERTEX = 3
     private var triangleCoords = floatArrayOf(     // in counterclockwise order:
-        0.0f, 0.0f, 0.0f,      // top
-        0.0f, 1.0f, 0.0f,    // bottom left
-        1.0f, 0.0f, 0.0f      // bottom right
+        -0.5f, 0.0f, 0.0f,      // bottom left
+        0.0f, 1.0f, 0.0f,    // top
+        0.5f, 0.0f, 0.0f      // bottom right
     )
 
     private val vertexCount: Int = triangleCoords.size / COORDS_PER_VERTEX
@@ -229,7 +257,6 @@ class Triangle {
 
         // get handle to vertex shader's vPosition member
         positionHandle = GLES20.glGetAttribLocation(mProgram, "vPosition").also {
-            Log.d("->", "it = $it")
             // Enable a handle to the triangle vertices
             GLES20.glEnableVertexAttribArray(it)
 
@@ -253,20 +280,22 @@ class Triangle {
         // Draw the triangle
         GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, vertexCount)
 
-        val textureUniformHandle: Int = GLES20.glGetUniformLocation(mProgram, "u_Texture")
+        var textureUniformHandle: Int = GLES20.glGetUniformLocation(mProgram, "u_Texture")
 
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mTextureDataHandle)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mTextureDataHandle[0])
         GLES20.glUniform1i(textureUniformHandle, 0)
 
-        val textureCoordinateDataSize: Int = 2
+        textureUniformHandle = GLES20.glGetUniformLocation(mProgram, "back_Texture")
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mTextureDataHandle[1])
+        GLES20.glUniform1i(textureUniformHandle, 1)
 
         val textureCoordinateData = floatArrayOf(
-            // Front face
-            0.0f, 0.0f,
-            0.0f, 1.0f,
             1.0f, 0.0f,
-            1.0f, 1.0f
+            0.5f, 1.0f,
+            0.0f, 0.0f,
         )
 
         val textureCoordinates: FloatBuffer =
