@@ -21,14 +21,14 @@ import javax.microedition.khronos.opengles.GL10
 
 class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
     @Volatile
-    public var angle: Float = 0f
+    public var angle_x: Float = 0f
+    public var angle_y: Float = 0f
     private var mTriangles: Vector<Triangle> = Vector(1)
 
     // vPMatrix is an abbreviation for "Model View Projection Matrix"
     private val modelMatrix = FloatArray(16)
     private val projectionMatrix = FloatArray(16)
     private val viewMatrix = FloatArray(16)
-    private val rotationMatrix = FloatArray(16)
 
     private var mActivityContext: Context = context
 
@@ -39,7 +39,7 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
         mTriangles[0].loadTexture(mActivityContext, R.drawable.texture)
         mTriangles[0].loadTexture(mActivityContext, R.drawable.brick)
         // Set the background frame color
-        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
+        GLES20.glClearColor(0.0f, 0.0f, 1.0f, 1.0f)
     }
 
     private val constIncrement = 0.02f
@@ -51,14 +51,10 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
         // Set the camera position (View matrix)
         Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 5f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
 
-        // Calculate the projection and view transformation
-        //Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
+        Matrix.setIdentityM(modelMatrix, 0)
+        Matrix.rotateM(modelMatrix, 0, angle_y, 1.0f, 0.0f, 0.0f)
+        Matrix.rotateM(modelMatrix, 0, angle_x, 0.0f, 1.0f, 0.0f)
 
-        val scratch = FloatArray(16)
-        // Create a rotation transformation for the triangle
-        val time = SystemClock.uptimeMillis() % 4000L
-     //   Matrix.setIdentityM(modelMatrix, 0)
-        Matrix.setRotateM(modelMatrix, 0, 0.090f * time.toInt(), 1.0f, 0f, 0.0f)
 
         mTriangles[0].draw(modelMatrix, viewMatrix, projectionMatrix)
     }
@@ -91,7 +87,7 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context) {
         // Set the Renderer for drawing on the GLSurfaceView
         setRenderer(renderer)
 
-        //renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
+        renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -108,8 +104,9 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context) {
                 var dx: Float = x - previousX
                 var dy: Float = y - previousY
 
-                renderer.angle += (dx + dy) * TOUCH_SCALE_FACTOR
-                //requestRender()
+                renderer.angle_y += dy * TOUCH_SCALE_FACTOR
+                renderer.angle_x += dx * TOUCH_SCALE_FACTOR
+                requestRender()
             }
         }
 
