@@ -33,9 +33,10 @@ class MyGLRenderer(context: Context) : GLSurfaceView.Renderer {
         // initialize a triangles
         mTriangles.add(Triangle())
 
-        mTriangles[0].loadTexture(mActivityContext, R.drawable.texture, R.drawable.brick)
+        mTriangles[0].loadTexture(mActivityContext, R.drawable.texture)
+        mTriangles[0].loadTexture(mActivityContext, R.drawable.brick)
         // Set the background frame color
-        GLES20.glClearColor(1.0f, 0.0f, 0.0f, 1.0f)
+        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
     }
 
     private val constIncrement = 0.02f
@@ -153,10 +154,10 @@ class Triangle {
 
     private var mTextureDataHandle = Vector<Int>()
 
-    fun loadTexture(context: Context, resourceId: Int, resourceId2: Int): Vector<Int> {
+    fun loadTexture(context: Context, resourceId: Int): Vector<Int> {
         val textureHandle = IntArray(2)
 
-        GLES20.glGenTextures(2, textureHandle, 0)
+        GLES20.glGenTextures(1, textureHandle, 0)
         if (textureHandle[0] != 0) {
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[0])
 
@@ -164,7 +165,6 @@ class Triangle {
             options.inScaled = false
             var bitmap: Bitmap = BitmapFactory.decodeResource(context.getResources(), resourceId, options)
             var matrix: android.graphics.Matrix = android.graphics.Matrix()
-            matrix.postRotate(180.0f)
             bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, false)
 
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
@@ -179,27 +179,6 @@ class Triangle {
             throw RuntimeException("Error loading texture.")
         }
 
-        if (textureHandle[1] != 0) {
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[1])
-
-            val options = BitmapFactory.Options()
-            options.inScaled = false
-            var bitmap: Bitmap = BitmapFactory.decodeResource(context.getResources(), resourceId2, options)
-            var matrix: android.graphics.Matrix = android.graphics.Matrix()
-            matrix.postRotate(180.0f)
-            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, false)
-
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
-
-            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
-
-            bitmap.recycle()
-
-            mTextureDataHandle.add(textureHandle[1])
-        } else {
-            throw RuntimeException("Error loading texture.")
-        }
         return mTextureDataHandle
     }
 
@@ -293,9 +272,9 @@ class Triangle {
         GLES20.glUniform1i(textureUniformHandle, 1)
 
         val textureCoordinateData = floatArrayOf(
-            1.0f, 0.0f,
-            0.5f, 1.0f,
             0.0f, 0.0f,
+            0.5f, 1.0f,
+            1.0f, 0.0f,
         )
 
         val textureCoordinates: FloatBuffer =
